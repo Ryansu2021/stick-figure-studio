@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>黑板火柴人短片工作台 (Studio)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600;700;900&display=swap');
+    body { font-family: 'Noto Sans TC', sans-serif; background-color: #0b1120; color: #f1f5f9; }
+    #previewCanvas { background-color: #1d4537; aspect-ratio: 9/16; width: 100%; max-height: 82vh; object-fit: contain; }
+    .custom-scroll::-webkit-scrollbar { width: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: rgba(30, 41, 59, 0.5); border-radius: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: rgba(100, 116, 139, 0.6); border-radius: 4px; }
+    #dropZone.drag-active { background-color: rgba(59, 130, 246, 0.15); border-color: #60a5fa; }
+    @keyframes goldPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.7); transform: scale(1); }
+      50% { box-shadow: 0 0 0 10px rgba(234, 179, 8, 0); transform: scale(1.03); }
+    }
+    .animate-gold-pulse {
+      animation: goldPulse 2s infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex flex-col justify-between">
+
+  <!-- 頂部導覽列：右上角強化第一步 -->
+  <header class="max-w-7xl mx-auto w-full flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-xl shadow-lg shadow-emerald-900/40">🎬</div>
+      <div>
+        <h1 class="text-xl md:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+          黑板火柴人短片工作台 <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/30">Studio v2.5</span>
+        </h1>
+        <p class="text-xs text-slate-400 mt-0.5">兩段式研習工作流：第一步向 AI 索取程式碼 ➔ 第二步網頁離線一鍵渲染出片</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <!-- 醒目第一步按鈕 -->
+      <button onclick="openPromptModal()" class="animate-gold-pulse px-5 py-2.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 font-black rounded-xl text-sm flex items-center gap-2 shadow-xl border-2 border-yellow-200 transition-all hover:brightness-110">
+        <span class="bg-slate-950 text-yellow-300 text-xs px-2 py-0.5 rounded-full font-bold">第一步</span>
+        <span>📋 點此取得 AI 專用提示詞</span>
+      </button>
+      <button onclick="loadSSAExample()" class="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl text-xs font-semibold transition-all">
+        載入 SSA 示範腳本
+      </button>
+    </div>
+  </header>
+
+  <!-- 主工作區 -->
+  <main class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 my-6 flex-1">
+    
+    <!-- 左側面板 -->
+    <div class="lg:col-span-7 flex flex-col gap-6">
+
+      <!-- 步驟 1：貼上腳本代碼 -->
+      <section class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 shadow-xl relative">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <span class="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold text-sm flex items-center justify-center">2</span>
+            <h2 class="font-bold text-base text-slate-100">貼上 AI 生成的 JavaScript 腳本</h2>
+          </div>
+          <div class="flex items-center gap-2">
+            <!-- 清除腳本按鍵 -->
+            <button onclick="clearScriptInput()" class="px-2.5 py-1 bg-red-950/60 hover:bg-red-900/80 text-red-300 hover:text-white border border-red-800/60 rounded-md text-xs font-semibold flex items-center gap-1 transition-all">
+              <span>🗑️</span> 清除腳本
+            </button>
+            <span id="scriptBadge" class="text-xs text-slate-400 bg-slate-800 px-2.5 py-1 rounded-md border border-slate-700">尚未載入腳本</span>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <textarea id="scriptInput" rows="7" placeholder="將 AI 產生的 JavaScript 程式碼貼於此處（必須包含 window.render 函數）..." 
+            class="w-full p-4 rounded-xl bg-slate-950/80 border border-slate-800 font-mono text-xs text-slate-300 focus:ring-2 focus:ring-blue-500/60 focus:border-blue-500 outline-none custom-scroll resize-y"
+            oninput="handleScriptInput()"></textarea>
+
+          <div id="parsedCard" class="hidden bg-slate-950/50 rounded-xl p-4 border border-slate-800/80 space-y-3">
+            <div class="flex items-center justify-between text-xs pb-2 border-b border-slate-800 text-slate-400">
+              <span class="font-semibold text-slate-300">偵測到的單元資訊</span>
+              <span id="parsedMeta" class="text-emerald-400">時長：-- 秒</span>
+            </div>
+            <div id="dialogueList" class="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scroll text-xs"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 步驟 2：配樂設定 -->
+      <section class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 shadow-xl">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <span class="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold text-sm flex items-center justify-center">3</span>
+            <h2 class="font-bold text-base text-slate-100">選擇背景配樂 (選填)</h2>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-xs text-slate-400">內建配樂：</label>
+            <select id="builtInMusic" onchange="selectBuiltInMusic()" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1 outline-none">
+              <option value="synth_happy">輕快粉筆節奏 (合成音)</option>
+              <option value="none">無配樂 (靜音短片)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="dropZone" class="border-2 border-dashed border-slate-800 hover:border-slate-700 bg-slate-950/40 rounded-xl p-5 text-center cursor-pointer transition-all">
+          <input type="file" id="audioFile" accept="audio/*" class="hidden" onchange="handleFileSelect(event)">
+          <div onclick="document.getElementById('audioFile').click()" class="flex items-center justify-center gap-3 text-slate-400 hover:text-slate-200">
+            <span class="text-2xl">🎵</span>
+            <div class="text-left">
+              <div id="audioFileName" class="text-xs font-semibold text-slate-300">拖曳 MP3 檔案至此，或點擊自選上傳</div>
+              <div class="text-[11px] text-slate-500">支援 MP3 / WAV 格式，未上傳將使用上方內建配樂</div>
+            </div>
+          </div>
+        </div>
+        <audio id="audioPreview" class="w-full mt-3 hidden" controls></audio>
+      </section>
+
+      <!-- 步驟 3：渲染與下載按鈕 -->
+      <section class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 shadow-xl">
+        <div class="flex items-center gap-3 mb-4">
+          <span class="w-7 h-7 rounded-lg bg-emerald-600 text-white font-bold text-sm flex items-center justify-center">4</span>
+          <h2 class="font-bold text-base text-slate-100">一鍵渲染與匯出 MP4 / WebM</h2>
+        </div>
+
+        <div class="space-y-4">
+          <button id="renderBtn" onclick="startRenderAndRecord()" class="w-full py-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 transition-all text-base active:scale-[0.99]">
+            <span>▶</span> 開始渲染並打包短片
+          </button>
+
+          <div id="progressWrap" class="hidden space-y-2">
+            <div class="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
+              <div id="progressBar" class="bg-gradient-to-r from-emerald-500 to-teal-400 h-2.5 w-0 transition-all duration-75"></div>
+            </div>
+            <div class="flex justify-between text-xs text-slate-400">
+              <span id="progressStatus">正在逐格繪製中...</span>
+              <span id="progressPct">0%</span>
+            </div>
+          </div>
+
+          <div id="downloadCard" class="hidden bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="text-xl">🎉</span>
+              <div>
+                <div class="text-xs font-bold text-emerald-300">影片渲染完成！</div>
+                <div class="text-[11px] text-slate-400" id="downloadMeta">檔案已自動存入您的下載資料夾</div>
+              </div>
+            </div>
+            <a id="manualDownloadLink" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow transition-all cursor-pointer">
+              重新下載
+            </a>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- 右側面板：黑板放映室 -->
+    <div class="lg:col-span-5 flex flex-col items-center">
+      <div class="w-full max-w-[420px] bg-slate-900/90 rounded-2xl p-4 border border-slate-800 shadow-2xl flex flex-col items-center gap-3">
+        
+        <div class="w-full flex items-center justify-between px-2 text-xs text-slate-400">
+          <span class="font-semibold text-slate-300 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span> 9:16 黑板放映室
+          </span>
+          <span id="liveTimestamp" class="font-mono text-emerald-400">00:00.0 / 00:00.0</span>
+        </div>
+
+        <div class="relative w-full rounded-xl overflow-hidden border border-slate-800/80 shadow-inner flex justify-center bg-[#1d4537]">
+          <canvas id="previewCanvas" width="720" height="1280"></canvas>
+          <div id="recBadge" class="hidden absolute top-4 right-4 bg-red-600/90 backdrop-blur text-white text-[11px] font-bold px-3 py-1 rounded-full animate-pulse border border-red-400/30">
+            ● REC 錄影中
+          </div>
+        </div>
+
+        <div class="w-full px-2 pt-2 flex flex-col gap-1.5">
+          <div class="flex items-center justify-between text-[11px] text-slate-400">
+            <span>影格抽檢時間軸</span>
+            <span id="sliderTimeLabel">t = 0.0s</span>
+          </div>
+          <input type="range" id="timeSlider" min="0" max="25" step="0.1" value="0" oninput="handleSliderChange(this.value)"
+            class="w-full h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="max-w-7xl mx-auto w-full text-center text-xs text-slate-500 pt-6 border-t border-slate-800">
+    臺南市忠孝國中數學王子 蘇恭弘 教學短片研習專用系統・基於 HTML5 Canvas 與 Web Audio 純前端架構
+  </footer>
+
+  <!-- 提示詞模板彈窗 -->
+  <div id="promptModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="font-bold text-white text-base flex items-center gap-2">
+          <span class="text-yellow-400 text-lg">★</span> 第一步：複製此提示詞發送給 AI
+        </h3>
+        <button onclick="closePromptModal()" class="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+      </div>
+      <p class="text-xs text-slate-300 leading-relaxed">
+        請點擊「一鍵複製」，直接將下方內容貼給 Gemini 或 ChatGPT。第一列就是主題，直接修改括號中的【主題名稱】即可：
+      </p>
+      <div class="relative">
+        <textarea id="promptTemplateText" rows="11" readonly class="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-amber-300 leading-relaxed outline-none resize-none custom-scroll">
+【數學探究主題】：【三角形 SSA 為什麼不一定全等】（請修改此處主題）
+
+我想製作一支黑板火柴人數學短片。請直接輸出可在「黑板短片工作台」執行的 JavaScript 純代碼，不要寫任何企劃說明文字，不要宣告 const TL 陣列。
+
+【執行環境白名單 API 規範】
+1. 時間軸物件：
+   - const tb = new TL(120, P, CAP); // 小宇 (who:'b', 天藍色)
+   - const tg = new TL(600, P, CAP); // 小晴 (who:'g', 橘色)
+   - 僅允許使用：.wait(秒), .at(時間), .say('台詞', 'b'或'g', 秒), .walk(x), .piece('id', 初始物件), .pc('id', t), .set('id', 目標物件, 耗時)
+   - 禁止使用未實現的外部偽函式（嚴禁呼叫 hi5()、grab()、carry() 等未定義 API）
+2. 渲染核心規範：
+   - 必須宣告 window.TEND = 總秒數;（建議 20~25 秒）
+   - 必須宣告 window.render = function(t){ ... finish(s); };
+   - 畫面尺寸：寬 720, 高 1280 (9:16 直式)，地板 FL = 950
+   - 繪圖輔助函式：header(), chalkLine(), floorLine(), T(), drawFig(), captions(), finish(s)
+3. 教學流程：小宇提出迷思 ➔ 小晴用幾何/代數動態演示關鍵破綻 ➔ 兩人觀察出反例 ➔ 結尾給出明確結論看板。</textarea>
+        <button onclick="copyPromptTemplate()" class="absolute top-2.5 right-2.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-lg shadow transition-all">
+          一鍵複製
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <svg id="s" style="display:none;"></svg>
+
+  <script>
+    // ==========================================
+    // 黑板火柴人底層引擎 (完整防禦與相容性支援)
+    // ==========================================
+    const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
+    const sm=u=>{u=clamp(u);return u*u*(3-2*u);};
+    const ramp=(t,a,b)=>sm((t-a)/(b-a));
+    const win=(t,a,b,f=.25)=>ramp(t,a,a+f)*(1-ramp(t,b-f,b));
+    const lerp=(a,b,u)=>a+(b-a)*u;
+    const mix=(c1,c2,u)=>{const p=s=>[1,3,5].map(i=>parseInt(s.slice(i,i+2),16));
+      const A=p(c1),B=p(c2);return 'rgb('+A.map((v,i)=>Math.round(lerp(v,B[i],u))).join(',')+')';};
+
+    const CH='#e9efe6', SKY='#8fd0ea', ORA='#f0a96a', YEL='#f4cf6a', RED='#ec8a7c', DIM='#9fb8ad', TEAL='#9ad8c0', BOARD='#21503f';
+    const it=v=>`<tspan font-style="italic">${v}</tspan>`;
+    const zi=v=>`<tspan class="m" font-style="italic">${v}</tspan>`;
+    
+    let currentSvgString = "";
+    function finish(s) { currentSvgString = s; }
+
+    function T(x,y,html,fs,col,op=1,anchor='middle',cls='m'){
+      if(op<=0.005) return '';
+      return `<text x="${x}" y="${y}" class="${cls}" font-size="${fs}" fill="${col}" text-anchor="${anchor}" opacity="${op}" dominant-baseline="central">${html}</text>`;
+    }
+    function kf(keys,t,ease=sm){
+      if(t<=keys[0][0]) return keys[0][1];
+      for(let i=1;i<keys.length;i++) if(t<keys[i][0]){const [t0,a]=keys[i-1],[t1,b]=keys[i],u=ease((t-t0)/(t1-t0||1));
+        return Array.isArray(a)?a.map((v,j)=>lerp(v,b[j],u)):lerp(a,b,u);}
+      return keys[keys.length-1][1];
+    }
+
+    // 擴充：內建 hi5 避免其他腳本呼叫時發生崩潰
+    function hi5(t, tHi, bx, gx, F) {
+      if (t < tHi || t > tHi + 2.5) return { w: 0, b: [bx, F], g: [gx, F] };
+      const w = win(t, tHi, tHi + 2.0, 0.3);
+      const mx = (bx + gx) / 2, my = F - 130;
+      return { w, b: [mx, my], g: [mx, my] };
+    }
+
+    const FS=1.25;
+    const FIG={LEG:29*FS,TORSO:67*FS,ARM:46*FS,HR:18*FS,NECK:27*FS};
+    function ik(S,H,L,outSign){let dx=H[0]-S[0],dy=H[1]-S[1],d=Math.hypot(dx,dy)||1;const m=2*L-.5;
+      if(d>m){H=[S[0]+dx/d*m,S[1]+dy/d*m];dx=H[0]-S[0];dy=H[1]-S[1];d=m;}
+      const hh=Math.sqrt(Math.max(0,L*L-d*d/4)),mx=(S[0]+H[0])/2,my=(S[1]+H[1])/2,nx=-dy/d,ny=dx/d;
+      const E1=[mx+nx*hh,my+ny*hh],E2=[mx-nx*hh,my-ny*hh];
+      return {E:(E1[0]-E2[0])*outSign>=0?E1:E2,H};}
+
+    function drawFig(o){
+      const {LEG,TORSO,ARM,HR,NECK}=FIG, sx=o.x, F=o.floor, t=o.t||0;
+      const HIP0=F-56*FS, SH0=HIP0-TORSO, mv=clamp(Math.abs(o.vx||0)/120);
+      const idleL=[sx-22*FS,SH0+58*FS], idleR=[sx+22*FS,SH0+58*FS];
+      let hL=o.hL?[lerp(idleL[0],o.hL[0],o.wL??1),lerp(idleL[1],o.hL[1],o.wL??1)]:idleL;
+      let hR=o.hR?[lerp(idleR[0],o.hR[0],o.wR??1),lerp(idleR[1],o.hR[1],o.wR??1)]:idleR;
+      const yay=o.yay||0;
+      if(yay>0){hL=[lerp(hL[0],sx-50*FS,yay),lerp(hL[1],SH0-58*FS,yay)];hR=[lerp(hR[0],sx+50*FS,yay),lerp(hR[1],SH0-58*FS,yay)];}
+      const R=2*ARM-2; let lo=-1e9,hi=1e9;
+      for(const H of [hL,hR]){const dx=Math.min(Math.abs(H[0]-sx),R-1),vv=Math.sqrt(R*R-dx*dx);lo=Math.max(lo,H[1]-vv);hi=Math.min(hi,H[1]+vv);}
+      let sy=lo>hi?(lo+hi)/2:clamp(SH0,lo,hi);
+      const off=clamp(sy-SH0,-60,38)-yay*Math.abs(Math.sin(t*6.6))*20; sy=SH0+off;
+      const air=Math.min(0,off), hip=[sx,HIP0+off], sh=[sx,sy], face=o.face||0;
+      const head=[sx+Math.sin(t*20)*7*(o.shake||0)+face*3, sy-NECK], ph=sx*.075;
+      const fL=[sx-17+9*Math.sin(ph)*mv, F+air-Math.max(0,Math.cos(ph))*8*mv];
+      const fR=[sx+17-9*Math.sin(ph)*mv, F+air-Math.max(0,-Math.cos(ph))*8*mv];
+      const lL=ik(hip,fL,LEG,-1), lR=ik(hip,fR,LEG,1), aL=ik(sh,hL,ARM,-1), aR=ik(sh,hR,ARM,1);
+      const mood=(o.mood??2)+4*yay, ex=face*5, st=`stroke="${CH}" stroke-width="${4.6*FS}" stroke-linecap="round" stroke-linejoin="round" fill="none"`;
+      let s=`<g ${st}><path d="M${hip} L${sh}"/><path d="M${hip} L${lL.E} L${lL.H} M${hip} L${lR.E} L${lR.H}"/>
+       <path d="M${sh} L${aL.E} L${aL.H} M${sh} L${aR.E} L${aR.H}"/><circle cx="${head[0]}" cy="${head[1]}" r="${HR}" fill="${BOARD}"/></g>
+       <circle cx="${head[0]-7+ex}" cy="${head[1]-4}" r="2.8" fill="${CH}"/><circle cx="${head[0]+7+ex}" cy="${head[1]-4}" r="2.8" fill="${CH}"/>
+       <path d="M${head[0]-8+ex},${head[1]+8} Q${head[0]+ex},${head[1]+8+mood} ${head[0]+8+ex},${head[1]+8}" stroke="${CH}" stroke-width="2.8" fill="none" stroke-linecap="round"/>`;
+      if(o.who==='b'){for(const a of [-2.2,-1.85,-1.5,-1.15,-0.85]) s+=`<line x1="${head[0]+Math.cos(a)*HR}" y1="${head[1]+Math.sin(a)*HR}" x2="${head[0]+Math.cos(a)*(HR+9)}" y2="${head[1]+Math.sin(a)*(HR+9)}" stroke="${CH}" stroke-width="3.4" stroke-linecap="round"/>`;}
+      if(o.who==='g'){const bx=head[0]-face*4;
+        s+=`<path d="M${bx+HR*.55},${head[1]-HR*.8} Q${bx+HR+22},${head[1]-HR*.6} ${bx+HR+12},${head[1]+HR*1.1}" stroke="${CH}" stroke-width="4.2" fill="none" stroke-linecap="round"/>`+
+           `<path d="M${bx+HR*.6},${head[1]-HR*.85} q6,-8 12,-2 q-4,9 -12,2z" fill="${RED}"/>`+
+           `<path d="M${head[0]-HR*.8},${head[1]-HR*.45} Q${head[0]},${head[1]-HR*1.25} ${head[0]+HR*.8},${head[1]-HR*.45}" stroke="${CH}" stroke-width="3" fill="none"/>`+
+           `<path d="M${hip[0]-9},${hip[1]-30} L${hip[0]+9},${hip[1]-30} L${hip[0]+27},${hip[1]+20} L${hip[0]-27},${hip[1]+20} Z" fill="${BOARD}" stroke="${CH}" stroke-width="3.6" stroke-linejoin="round"/>`;}
+      if((o.q||0)>.01) s+=`<text x="${head[0]+30}" y="${head[1]-26}" class="m" font-size="36" fill="${RED}" opacity="${o.q}">?</text>`;
+      if(yay>.01) for(let i=0;i<5;i++){const a=-Math.PI/2+(i-2)*.28,r1=36+6*Math.sin(t*8+i),r2=r1+14;
+        s+=`<line x1="${head[0]+Math.cos(a)*r1}" y1="${head[1]+Math.sin(a)*r1}" x2="${head[0]+Math.cos(a)*(HR+9)}" y2="${head[1]+Math.sin(a)*(HR+9)}" stroke="${YEL}" stroke-width="3" stroke-linecap="round" opacity="${yay}"/>`;}
+      return s;
+    }
+
+    class TL{
+      constructor(x0,P,CAP){this.T=0;this.FK=[[0,x0]];this.FX=x0;this.P=P||{};this.H=[];this.CAP=CAP||[];this.held=null;}
+      piece(id,p){this.P[id]=[{t:0,...p}];return this;}
+      cur(id){return this.pc(id,this.T);}
+      key(id,t,p){if(!this.P[id]) this.P[id]=[{t:0,...p}]; const a=this.P[id],o={...this.pc(id,t),...p,t};let i=a.length;while(i>0&&a[i-1].t>t)i--;a.splice(i,0,o);}
+      walk(x2,v=420){const d=.2+Math.abs(x2-this.FX)/v;this.FK.push([this.T,this.FX],[this.T+d,x2]);this.FX=x2;this.T+=d;return this;}
+      wait(d){this.T+=d;return this;}
+      at(T){if(T>this.T){this.FK.push([this.T,this.FX],[T,this.FX]);this.T=T;}return this;}
+      say(text,who,d=2){this.CAP.push([this.T,this.T+d,text,who]);return this;}
+      grab(ids,grip){ids=[].concat(ids);this.H.push({t0:this.T,t1:this.T+.32,ids,grip});this.T+=.32;this.held=ids;return this;}
+      carry(tg,fx,dur){const d=dur??(.35+Math.abs(fx-this.FX)/380);this.FK.push([this.T,this.FX],[this.T+d,fx]);for(const id in tg){this.key(id,this.T,{});this.key(id,this.T+d,tg[id]);}this.FX=fx;this.T+=d;return this;}
+      release(){const h=this.H[this.H.length-1];if(h){h.t2=this.T;h.t3=this.T+.28;}this.T+=.28;this.held=null;return this;}
+      set(id,p,dur=0.4){this.key(id,this.T,{});this.key(id,this.T+dur,p);this.T+=dur;return this;}
+      pc(id,t){const a=this.P[id];if(!a||!a.length) return {}; if(t<=a[0].t) return {...a[0]};
+        for(let i=1;i<a.length;i++) if(t<a[i].t){const p=a[i-1],q=a[i],u=sm((t-p.t)/(q.t-p.t||1)),o={};
+          for(const k in q){if(k==='t')continue;o[k]=typeof q[k]==='number'?lerp(p[k]??q[k],q[k],u):(u<.5?p[k]:q[k]);}
+          return o;}
+        return {...a[a.length-1]};}
+      fx(t){return kf(this.FK,t);}
+      vx(t){return (this.fx(t+.02)-this.fx(t-.02))/.04;}
+      hands(t){return {w:0};}
+    }
+
+    const CAPY=1178; const WHO={b:['小宇',SKY],g:['小晴',ORA]};
+    function header(t,label,titleHtml,subs){
+      let s=`<line x1="40" y1="118" x2="72" y2="118" stroke="${YEL}" stroke-width="3" opacity=".8"/>`+T(84,118,label,22,DIM,.9,'start','zh');
+      s+=T(360,196,titleHtml,62,CH,ramp(t,0,.6));
+      for(const [a,b,h] of subs) s+=T(360,268,h,32,CH,win(t,a,b,.3),'middle','zh');
+      return s;
+    }
+    function captions(t,CAP){let s='';
+      for(let [t0,t1,txt,who] of CAP){ txt=txt.split(/(<[^>]+>)/).map(seg=>seg.startsWith('<')?seg:seg.replace(/(^|[^a-z])(ab|[xyabchknmd])(?![a-z])/g,(m,a,v)=>a+zi(v))).join('');const op=win(t,t0,t1,.18); if(op<=.01) continue;
+        if(who&&WHO[who]) txt=`<tspan fill="${WHO[who][1]}">${WHO[who][0]}</tspan>：`+txt;
+        const plain=txt.replace(/<[^>]+>/g,''); const w=[...plain].reduce((a,ch)=>a+(/[ -~]/.test(ch)?17:32),0)+60;
+        s+=`<g opacity="${op}"><rect x="${360-w/2}" y="${CAPY-31}" width="${w}" height="62" rx="31" fill="#0c1410" fill-opacity=".62"/>`+
+           `<text x="360" y="${CAPY}" class="zh" font-size="32" fill="#f8f2e4" text-anchor="middle" dominant-baseline="central">${txt}</text></g>`;}
+      return s;}
+    function floorLine(F,op=.28){return `<line x1="20" y1="${F+3}" x2="700" y2="${F+3}" stroke="${CH}" stroke-width="2.4" opacity="${op}"/>`;}
+    function chalkLine(x1,y1,x2,y2,col=CH,w=3,op=1,dash=''){return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="${w}" stroke-linecap="round" opacity="${op}" ${dash?`stroke-dasharray="${dash}"`:''}/>`;}
+    function nameTag(x,F,who,op){return op>0?T(x,F+36,WHO[who][0],26,WHO[who][1],op,'middle','zh'):'';}
+
+    // 背景生成
+    const bgCanvas = document.createElement('canvas');
+    bgCanvas.width = 720; bgCanvas.height = 1280;
+    const bgCtx = bgCanvas.getContext('2d');
+    const gr = bgCtx.createRadialGradient(360,560,100,360,640,900);
+    gr.addColorStop(0,'#275a48'); gr.addColorStop(1,'#163b2f');
+    bgCtx.fillStyle = gr; bgCtx.fillRect(0,0,720,1280);
+    let seed = 7; const rnd = () => { seed=(seed*16807)%2147483647; return seed/2147483647; };
+    for(let i=0; i<260; i++) {
+      bgCtx.strokeStyle = `rgba(255,255,255,${0.012+rnd()*0.02})`;
+      bgCtx.lineWidth = 20+rnd()*60; bgCtx.beginPath();
+      const x=rnd()*720, y=rnd()*1280; bgCtx.moveTo(x,y);
+      bgCtx.quadraticCurveTo(x+rnd()*200-100, y+rnd()*40-20, x+rnd()*300-150, y+rnd()*60-30); bgCtx.stroke();
+    }
+    const imData = bgCtx.getImageData(0,0,720,1280), dArr = imData.data;
+    for(let i=0; i<dArr.length; i+=4) { const n=(rnd()-0.5)*14; dArr[i]+=n; dArr[i+1]+=n; dArr[i+2]+=n; }
+    bgCtx.putImageData(imData,0,0);
+
+    // ==========================================
+    // 示範腳本：三角形 SSA 為什麼不一定全等
+    // ==========================================
+    const ssaScriptCode = `// ===== 八年級 幾何：三角形 SSA 為什麼不一定全等 =====
+(function(){
+  const rad = d => d * Math.PI / 180;
+  const FL = 940, BASEY = 700, AX = 70, AB_LEN = 440, ANG_A = 40, ANG_C = 65;
+  const A = [AX, BASEY];
+  const B = [AX + AB_LEN * Math.cos(rad(ANG_A)), BASEY - AB_LEN * Math.sin(rad(ANG_A))];
+  const BC_LEN = (BASEY - B[1]) / Math.sin(rad(ANG_C));
+  const PHI_C = 90 - ANG_C; 
+  const endAt = phi => [B[0] + BC_LEN * Math.sin(rad(phi)), B[1] + BC_LEN * Math.cos(rad(phi))];
+  const C = endAt(PHI_C), C2 = endAt(-PHI_C);
+  const pts = (...a) => a.map(p => p.join(',')).join(' ');
+
+  const arcPath = (c, r, a0, a1) => {
+    const p = d => [c[0] + r * Math.cos(rad(d)), c[1] - r * Math.sin(rad(d))];
+    const [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return \`M\${x0},\${y0} A\${r},\${r} 0 \${Math.abs(a1 - a0) > 180 ? 1 : 0} \${a1 > a0 ? 0 : 1} \${x1},\${y1}\`;
+  };
+  const arc = (c, r, a0, a1, col, op, w = 3.4, dash = '') => op <= .01 ? '' : \`<path d="\${arcPath(c, r, a0, a1)}" fill="none" stroke="\${col}" stroke-width="\${w}" stroke-linecap="round" opacity="\${op}" \${dash ? \`stroke-dasharray="\${dash}"\` : ''}/>\`;
+  const dot = (p, col, op, r = 7) => op <= .01 ? '' : \`<circle cx="\${p[0]}" cy="\${p[1]}" r="\${r}" fill="\${col}" opacity="\${op}"/>\`;
+
+  const P = {}, CAP = [];
+  const tb = new TL(170, P, CAP), tg = new TL(650, P, CAP);
+  tb.piece('geo', { phi: 38 });
+
+  tb.wait(0.4).say('兩邊一角都一樣，一定全等吧！', 'b', 2.6).wait(2.6);
+  tg.at(tb.T); const tHint = tg.T;
+  tg.say('等等，∠A 不是這兩邊的夾角！', 'g', 2.8).wait(2.8);
+
+  const tGrab = tg.T;
+  tg.say('把 BC 往右轉，交到底線', 'g', 2.2);
+  tb.set('geo', { phi: PHI_C }, 1.5).wait(1.5);
+  const tC = tb.T;
+
+  tb.say('看吧，就只有這一個！', 'b', 2.1).wait(2.1);
+  tg.at(tb.T);
+  tg.say('BC 再往左轉……', 'g', 2.5);
+  tb.set('geo', { phi: -PHI_C }, 2.6).wait(2.6);
+  const tC2 = tb.T;
+
+  tb.say('咦？又碰到底線了！', 'b', 2.2).wait(2.2);
+  tg.at(tb.T); const tSame = tg.T;
+  tg.say('兩邊一角相同，形狀卻不同', 'g', 2.4).wait(2.4);
+  tb.at(tg.T); const tDiff = tb.T;
+  tb.say('第三邊不一樣，所以不全等！', 'b', 2.4).wait(2.4);
+
+  tg.at(tb.T);
+  tb.walk(520); tg.walk(640);
+  const tHi = Math.max(tb.T, tg.T) + 0.1;
+  tb.at(tHi); tg.at(tHi);
+  const TEND = tHi + 4.0;
+  CAP.push([tHi, TEND, 'SSA 不一定全等：可能形成兩種三角形']);
+
+  window.TEND = TEND;
+  window.render = function(t){
+    const m = v => \`<tspan class="m" font-style="italic">\${v}</tspan>\`;
+    let s = header(t, '八年級　幾何全等探究', 'SSA 一定全等嗎？', [
+      [0.3, tHint, \`∠\${m('A')} 與 \${m('AB')}、\${m('BC')} 的長度都固定\`],
+      [tHint, tGrab, \`注意：∠\${m('A')} 不是 \${m('AB')} 與 \${m('BC')} 的夾角！\`],
+      [tGrab, tSame, \`以 \${m('B')} 為圓心、\${m('BC')} 為半徑畫弧轉動\`],
+      [tSame, TEND + 1, \`圓弧與底線交於相異兩點！\`]
+    ]);
+    s += floorLine(FL);
+
+    const geo = tb.pc('geo', t);
+    const phi = geo.phi !== undefined ? geo.phi : 38;
+    const E = endAt(phi);
+    const showC = ramp(t, tC - 0.05, tC + 0.35);
+    const showC2 = ramp(t, tC2 - 0.05, tC2 + 0.35);
+
+    s += \`<polygon points="\${pts(A, B, C)}" fill="\${TEAL}" fill-opacity="\${0.2 * showC}" stroke="none"/>\`;
+    s += \`<polygon points="\${pts(A, B, C2)}" fill="\${RED}" fill-opacity="\${0.22 * showC2}" stroke="none"/>\`;
+
+    s += chalkLine(A[0], BASEY, 690, BASEY, CH, 3.4, 0.9);
+
+    if (t > tC) {
+      s += arc(B, BC_LEN, -90 + PHI_C, -90 + phi, YEL, 0.8 * (1 - ramp(t, tDiff, tDiff + 0.6)) + 0.2, 2.6, '8 9');
+    }
+
+    if (t > tC) s += chalkLine(B[0], B[1], C[0], C[1], ORA, 4.4, t > tC + 0.2 ? 0.75 : showC);
+    s += chalkLine(A[0], A[1], B[0], B[1], SKY, 5.4);
+    s += chalkLine(B[0], B[1], E[0], E[1], ORA, 5.4);
+
+    const pulse = 1 + 0.25 * Math.sin(t * 8) * win(t, tHint, tGrab, 0.3);
+    s += arc(A, 46 * pulse, 0, ANG_A, YEL, 1, 4);
+    s += T(A[0] + 84, BASEY - 27, \`40°\`, 30, YEL, 1);
+
+    const hintOp = win(t, tHint + 0.2, tGrab, 0.3);
+    if (hintOp > 0.01) {
+      const aBA = Math.atan2(A[1] - B[1], A[0] - B[0]);
+      const aBE = Math.atan2(E[1] - B[1], E[0] - B[0]);
+      const p0 = [B[0] + 44 * Math.cos(aBA), B[1] + 44 * Math.sin(aBA)];
+      const p1 = [B[0] + 44 * Math.cos(aBE), B[1] + 44 * Math.sin(aBE)];
+      s += \`<path d="M\${p0} A44,44 0 0 0 \${p1}" fill="none" stroke="\${CH}" stroke-width="3.2" stroke-dasharray="6 6" opacity="\${hintOp}"/>\`;
+      s += T(B[0] - 112, B[1] + 6, '夾角在這裡', 28, CH, hintOp, 'middle', 'zh');
+    }
+
+    s += arc(C, 36, 180 - ANG_C, 180, TEAL, showC, 4);
+    s += T(C[0] - 58, BASEY - 30, '65°', 30, TEAL, showC);
+    s += arc(C2, 36, ANG_C, 180, RED, showC2, 4);
+    s += T(C2[0] - 46, BASEY - 58, '115°', 30, RED, showC2);
+
+    const bar = ramp(t, tDiff, tDiff + 0.6);
+    if (bar > 0) {
+      s += chalkLine(A[0], BASEY + 12, lerp(A[0], C[0], bar), BASEY + 12, TEAL, 6, 1);
+      s += chalkLine(A[0], BASEY + 24, lerp(A[0], C2[0], bar), BASEY + 24, RED, 6, 1);
+    }
+
+    s += dot(A, CH, 1) + dot(B, CH, 1, 8);
+    s += dot(E, ORA, 1, 8);
+    s += dot(C, TEAL, showC, 8) + dot(C2, RED, showC2, 8);
+
+    s += T(A[0] - 26, BASEY + 6, it('A'), 40, CH, 1);
+    s += T(B[0], B[1] - 34, it('B'), 40, CH, 1);
+    s += T(C[0] + 22, BASEY - 30, it('C'), 40, TEAL, showC);
+    s += T(C2[0] - 4, BASEY + 50, it('C') + '′', 40, RED, showC2);
+
+    s += T((A[0] + B[0]) / 2 - 34, (A[1] + B[1]) / 2 - 22, it('AB'), 36, SKY, 1);
+    if (t > tC) {
+      s += T((B[0] + C[0]) / 2 + 40, (B[1] + C[1]) / 2 - 6, it('BC'), 36, ORA, showC);
+    } else {
+      const mid = [(B[0] + E[0]) / 2 + 40, (B[1] + E[1]) / 2 - 6];
+      s += T(mid[0], mid[1], it('BC'), 36, ORA, 1);
+    }
+    s += T((B[0] + C2[0]) / 2 - 40, (B[1] + C2[1]) / 2 + 6, it('BC') + '′', 36, ORA, showC2);
+
+    s += T(610, 470, \`△\${it('ABC')}\`, 34, TEAL, showC) + T(610, 512, '銳角三角形', 28, TEAL, showC, 'middle', 'zh');
+    s += T(140, 430, \`△\${it('ABC')}′\`, 34, RED, showC2) + T(140, 472, '鈍角三角形', 28, RED, showC2, 'middle', 'zh');
+
+    s += T(360, 1000, \`\${m('AB')}、\${m('BC')}、∠\${m('A')} 都相同\`, 38, CH, ramp(t, tSame, tSame + 0.5), 'middle', 'zh');
+    s += T(360, 1056, \`第三邊長度不相等，形狀完全不同\`, 36, CH, ramp(t, tDiff, tDiff + 0.5), 'middle', 'zh');
+    s += T(360, 1112, \`SSA 不是三角形全等性質\`, 42, YEL, ramp(t, tHi, tHi + 0.6), 'middle', 'zh');
+
+    const yay = ramp(t, tHi + 1.2, tHi + 1.6);
+    const surprised = win(t, tC2, tSame, 0.25);
+    const pointA = win(t, tHint, tGrab, 0.3);
+
+    s += drawFig({
+      who: 'b', t, x: tb.fx(t), floor: FL, vx: tb.vx(t),
+      hL: [A[0] + 36, BASEY + 6], wL: pointA,
+      face: pointA > 0.5 ? -0.5 : 0.5,
+      mood: surprised > 0.3 ? -3 : (t < tHint ? 4 : 2),
+      q: surprised, shake: surprised, yay
+    });
+    s += drawFig({
+      who: 'g', t, x: tg.fx(t), floor: FL, vx: tg.vx(t),
+      face: -0.5, mood: 3, yay
+    });
+
+    s += nameTag(tb.fx(t), FL, 'b', win(t, 0, 3.2, 0.4)) + nameTag(tg.fx(t), FL, 'g', win(t, 0, 3.2, 0.4));
+    s += captions(t, CAP);
+    finish(s);
+  };
+  window.render(0);
+})();`;
+
+    function loadSSAExample() {
+      document.getElementById('scriptInput').value = ssaScriptCode;
+      handleScriptInput();
+    }
+
+    // 清除腳本按鈕邏輯
+    function clearScriptInput() {
+      document.getElementById('scriptInput').value = '';
+      handleScriptInput();
+      const ctx = document.getElementById('previewCanvas').getContext('2d');
+      ctx.drawImage(bgCanvas, 0, 0);
+      window.render = null;
+      window.TEND = 0;
+      document.getElementById('liveTimestamp').textContent = '00:00.0 / 00:00.0';
+      document.getElementById('sliderTimeLabel').textContent = 't = 0.0s';
+      document.getElementById('scriptInput').focus();
+    }
+
+    // 腳本即時解析與防呆檢查
+    function handleScriptInput() {
+      const code = document.getElementById('scriptInput').value.trim();
+      const badge = document.getElementById('scriptBadge');
+      const parsedCard = document.getElementById('parsedCard');
+      const dialogueList = document.getElementById('dialogueList');
+
+      if (!code) {
+        badge.textContent = "尚未載入腳本";
+        badge.className = "text-xs text-slate-400 bg-slate-800 px-2.5 py-1 rounded-md border border-slate-700";
+        parsedCard.classList.add('hidden');
+        return;
+      }
+
+      // 防呆檢查：檢查是否為企劃案而非可執行代碼
+      if (!code.includes('window.render') && !code.includes('render = function') && !code.includes('function render')) {
+        badge.textContent = "⚠ 代碼缺少 render 函數 (無法生成畫面)";
+        badge.className = "text-xs text-amber-400 bg-amber-950/60 px-2.5 py-1 rounded-md border border-amber-500/40";
+        parsedCard.classList.remove('hidden');
+        dialogueList.innerHTML = '<div class="text-amber-300 font-semibold leading-relaxed">偵測到貼入的內容為「企劃案文字」而非引擎程式碼！<br>請點擊右上角「第一步」，複製標準提示詞發送給 AI 重新索取代碼。</div>';
+        return;
+      }
+
+      try {
+        new Function(code)();
+        const dur = window.TEND || 20;
+        badge.textContent = `✓ 已載入 (時長: ${dur.toFixed(1)}s)`;
+        badge.className = "text-xs text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-md border border-emerald-500/40";
+        parsedCard.classList.remove('hidden');
+        document.getElementById('parsedMeta').textContent = `時長：${dur.toFixed(1)} 秒`;
+
+        const slider = document.getElementById('timeSlider');
+        slider.max = dur.toFixed(1);
+        slider.value = 0;
+        handleSliderChange(0);
+
+        const sayMatches = [...code.matchAll(/\.say\s*\(\s*['"`](.*?)['"`]\s*,\s*['"`](b|g)['"`]/g)];
+        let html = '';
+        if (sayMatches.length > 0) {
+          sayMatches.forEach((m) => {
+            const role = m[2] === 'b' ? '小宇 (男)' : '小晴 (女)';
+            const color = m[2] === 'b' ? 'text-sky-400' : 'text-orange-400';
+            html += `
+              <div class="flex items-center gap-2 bg-slate-900/60 p-2 rounded-lg border border-slate-800/80">
+                <span class="${color} font-bold shrink-0">[${role}]</span>
+                <span class="text-slate-300 truncate">${m[1]}</span>
+              </div>
+            `;
+          });
+        } else {
+          html = '<div class="text-slate-500">此腳本為純自訂動畫演示。</div>';
+        }
+        dialogueList.innerHTML = html;
+
+      } catch (err) {
+        badge.textContent = "⚠ 代碼語法錯誤";
+        badge.className = "text-xs text-red-400 bg-red-950/60 px-2.5 py-1 rounded-md border border-red-500/40";
+        parsedCard.classList.remove('hidden');
+        dialogueList.innerHTML = `<div class="text-red-400 font-mono text-[11px] leading-relaxed">執行出錯：${err.message}</div>`;
+      }
+    }
+
+    async function handleSliderChange(val) {
+      document.getElementById('sliderTimeLabel').textContent = `t = ${parseFloat(val).toFixed(1)}s`;
+      document.getElementById('liveTimestamp').textContent = `${formatTime(val)} / ${formatTime(window.TEND || 0)}`;
+      if (typeof window.render === 'function') {
+        const ctx = document.getElementById('previewCanvas').getContext('2d');
+        ctx.drawImage(bgCanvas, 0, 0);
+        window.render(parseFloat(val));
+        await drawSvgToCanvas(currentSvgString, ctx);
+      }
+    }
+
+    function formatTime(s) {
+      const min = Math.floor(s / 60);
+      const sec = (s % 60).toFixed(1);
+      return `${min.toString().padStart(2, '0')}:${sec.padStart(4, '0')}`;
+    }
+
+    // 音訊處理
+    let audioContext = null, audioBuffer = null;
+    let selectedAudioType = 'synth_happy';
+
+    function selectBuiltInMusic() {
+      selectedAudioType = document.getElementById('builtInMusic').value;
+      document.getElementById('audioFileName').textContent = selectedAudioType === 'none' ? '目前設定：無配樂 (靜音短片)' : '目前設定：內建輕快合成粉筆音';
+    }
+
+    const dropZone = document.getElementById('dropZone');
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eName => dropZone.addEventListener(eName, e=>{e.preventDefault(); e.stopPropagation();}, false));
+    ['dragenter', 'dragover'].forEach(eName => dropZone.addEventListener(eName, ()=>dropZone.classList.add('drag-active'), false));
+    ['dragleave', 'drop'].forEach(eName => dropZone.addEventListener(eName, ()=>dropZone.classList.remove('drag-active'), false));
+    dropZone.addEventListener('drop', (e) => { if (e.dataTransfer.files.length > 0) processAudioFile(e.dataTransfer.files[0]); }, false);
+
+    function handleFileSelect(e) { if (e.target.files[0]) processAudioFile(e.target.files[0]); }
+
+    async function processAudioFile(file) {
+      if (!file || !file.type.startsWith('audio/')) return alert('請上傳正確的音訊格式 (MP3/WAV)。');
+      document.getElementById('audioFileName').textContent = `自訂配樂：${file.name}`;
+      const preview = document.getElementById('audioPreview');
+      preview.src = URL.createObjectURL(file);
+      preview.classList.remove('hidden');
+
+      const arrayBuffer = await file.arrayBuffer();
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      selectedAudioType = 'custom';
+    }
+
+    // 渲染與錄影
+    let mediaRecorder, recordedChunks = [];
+    async function drawSvgToCanvas(svgContent, ctx) {
+      return new Promise((resolve) => {
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280">
+          <style>
+            .m{font-family: serif; font-style: italic;}
+            .zh{font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;}
+          </style>${svgContent}</svg>`;
+        const img = new Image();
+        img.onload = () => { ctx.drawImage(img, 0, 0); resolve(); };
+        img.onerror = resolve;
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      });
+    }
+
+    async function startRenderAndRecord() {
+      if (typeof window.render !== 'function') {
+        alert("代碼無效或缺少 render 函數！請點擊右上角「第一步」重新索取代碼。");
+        return;
+      }
+
+      document.getElementById('renderBtn').disabled = true;
+      document.getElementById('progressWrap').classList.remove('hidden');
+      document.getElementById('recBadge').classList.remove('hidden');
+      document.getElementById('downloadCard').classList.add('hidden');
+
+      const canvas = document.getElementById('previewCanvas');
+      const ctx = canvas.getContext('2d');
+      const canvasStream = canvas.captureStream(30);
+      let combinedStream = canvasStream, sourceNode = null;
+
+      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const destNode = audioContext.createMediaStreamDestination();
+
+      if (selectedAudioType === 'custom' && audioBuffer) {
+        sourceNode = audioContext.createBufferSource();
+        sourceNode.buffer = audioBuffer;
+        sourceNode.connect(destNode);
+        sourceNode.connect(audioContext.destination);
+      } else if (selectedAudioType === 'synth_happy') {
+        sourceNode = createSynthMusicNode(audioContext, destNode, window.TEND || 20);
+      }
+
+      if (destNode.stream.getAudioTracks().length > 0) {
+        combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...destNode.stream.getAudioTracks()]);
+      }
+
+      const mime = MediaRecorder.isTypeSupported('video/mp4;codecs=avc1') ? 'video/mp4' 
+                 : (MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm');
+      
+      mediaRecorder = new MediaRecorder(combinedStream, { mimeType: mime, videoBitsPerSecond: 6000000 });
+      recordedChunks = [];
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+      
+      mediaRecorder.onstop = () => {
+        const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+        const blob = new Blob(recordedChunks, { type: mime });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.style.display = 'none'; a.href = url; a.download = `數學火柴人短片.${ext}`;
+        document.body.appendChild(a); a.click();
+
+        document.getElementById('renderBtn').disabled = false;
+        document.getElementById('progressWrap').classList.add('hidden');
+        document.getElementById('recBadge').classList.add('hidden');
+        document.getElementById('downloadCard').classList.remove('hidden');
+        document.getElementById('downloadMeta').textContent = `規格：1080x1920 (9:16)・格式：${ext.toUpperCase()}`;
+        
+        document.getElementById('manualDownloadLink').onclick = () => { a.click(); };
+      };
+
+      mediaRecorder.start();
+      if (sourceNode && sourceNode.start) sourceNode.start(0);
+
+      const fps = 30;
+      const totalDur = (window.TEND || 20) + 1.5;
+      const totalFrames = Math.floor(totalDur * fps);
+      let currentFrame = 0;
+
+      async function renderFrame() {
+        if (currentFrame > totalFrames) {
+          mediaRecorder.stop();
+          if (sourceNode && sourceNode.stop) sourceNode.stop();
+          return;
+        }
+
+        const t = currentFrame / fps;
+        ctx.drawImage(bgCanvas, 0, 0);
+        window.render(t);
+        await drawSvgToCanvas(currentSvgString, ctx);
+
+        const pct = Math.round((currentFrame / totalFrames) * 100);
+        document.getElementById('progressBar').style.width = `${pct}%`;
+        document.getElementById('progressPct').textContent = `${pct}%`;
+        document.getElementById('liveTimestamp').textContent = `${formatTime(t)} / ${formatTime(totalDur)}`;
+
+        currentFrame++;
+        setTimeout(renderFrame, 1000 / fps);
+      }
+      renderFrame();
+    }
+
+    function createSynthMusicNode(actx, dest, duration) {
+      const master = actx.createGain();
+      master.gain.setValueAtTime(0.12, actx.currentTime);
+      master.connect(dest); master.connect(actx.destination);
+      const osc = actx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(261.63, actx.currentTime);
+      const notes = [261.63, 329.63, 392.00, 523.25];
+      for (let i = 0; i < duration * 2; i++) {
+        osc.frequency.setValueAtTime(notes[i % notes.length], actx.currentTime + i * 0.5);
+      }
+      osc.connect(master);
+      return osc;
+    }
+
+    function openPromptModal() { document.getElementById('promptModal').classList.remove('hidden'); }
+    function closePromptModal() { document.getElementById('promptModal').classList.add('hidden'); }
+    function copyPromptTemplate() {
+      const text = document.getElementById('promptTemplateText').value;
+      navigator.clipboard.writeText(text).then(() => {
+        alert("已複製專用提示詞！請貼給 AI，並將第一列括號中的主題改成您想教的單元即可。");
+      });
+    }
+
+    window.onload = () => {
+      loadSSAExample();
+    };
+  </script>
+</body>
+</html>
