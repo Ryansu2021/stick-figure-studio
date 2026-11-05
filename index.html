@@ -608,7 +608,6 @@
       document.getElementById('liveTimestamp').textContent = `${formatTime(val)} / ${formatTime(window.TEND || 0)}`;
       if (typeof window.render === 'function') {
         const ctx = document.getElementById('previewCanvas').getContext('2d');
-        ctx.drawImage(bgCanvas, 0, 0);
         window.render(parseFloat(val));
         await drawSvgToCanvas(currentSvgString, ctx);
       }
@@ -660,7 +659,7 @@
             .zh{font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;}
           </style>${svgContent}</svg>`;
         const img = new Image();
-        img.onload = () => { ctx.drawImage(img, 0, 0); resolve(); };
+        img.onload = () => { ctx.drawImage(bgCanvas, 0, 0); ctx.drawImage(img, 0, 0); resolve(); };
         img.onerror = resolve;
         img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
       });
@@ -698,8 +697,15 @@
         combinedStream = new MediaStream([...canvasStream.getVideoTracks(), ...destNode.stream.getAudioTracks()]);
       }
 
-      const mime = MediaRecorder.isTypeSupported('video/mp4;codecs=avc1') ? 'video/mp4' 
-                 : (MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm');
+      // 優先順序：相容性最佳的 H.264 + AAC，其次 H.264 + Opus，最後才用 WebM
+      const mime = [
+        'video/mp4;codecs="avc1.640028,mp4a.40.2"',
+        'video/mp4;codecs="avc1.42E01F,mp4a.40.2"',
+        'video/mp4;codecs="avc1.640028,opus"',
+        'video/webm;codecs=vp9',
+        'video/webm'
+      ].find(m => MediaRecorder.isTypeSupported(m));
+      const codecLabel = mime.includes('mp4a') ? 'H.264 + AAC' : mime.includes('avc1') ? 'H.264 + Opus' : 'WebM';
       
       mediaRecorder = new MediaRecorder(combinedStream, { mimeType: mime, videoBitsPerSecond: 6000000 });
       recordedChunks = [];
@@ -718,7 +724,7 @@
         document.getElementById('progressWrap').classList.add('hidden');
         document.getElementById('recBadge').classList.add('hidden');
         document.getElementById('downloadCard').classList.remove('hidden');
-        document.getElementById('downloadMeta').textContent = `規格：${canvas.width}x${canvas.height} (9:16)・格式：${ext.toUpperCase()}`;
+        document.getElementById('downloadMeta').textContent = `規格：${canvas.width}x${canvas.height} (9:16)・格式：${ext.toUpperCase()}（${codecLabel}）`;
         
         document.getElementById('manualDownloadLink').onclick = () => { a.click(); };
       };
@@ -728,28 +734,26 @@
 
       const fps = 30;
       const totalDur = (window.TEND || 20) + 1.5;
-      const totalFrames = Math.floor(totalDur * fps);
-      let currentFrame = 0;
+      const startTime = performance.now();
 
       async function renderFrame() {
-        if (currentFrame > totalFrames) {
+        const frameStart = performance.now();
+        const t = (frameStart - startTime) / 1000;
+        if (t >= totalDur) {
           mediaRecorder.stop();
           if (sourceNode && sourceNode.stop) sourceNode.stop();
           return;
         }
 
-        const t = currentFrame / fps;
-        ctx.drawImage(bgCanvas, 0, 0);
         window.render(t);
         await drawSvgToCanvas(currentSvgString, ctx);
 
-        const pct = Math.round((currentFrame / totalFrames) * 100);
+        const pct = Math.round((t / totalDur) * 100);
         document.getElementById('progressBar').style.width = `${pct}%`;
         document.getElementById('progressPct').textContent = `${pct}%`;
         document.getElementById('liveTimestamp').textContent = `${formatTime(t)} / ${formatTime(totalDur)}`;
 
-        currentFrame++;
-        setTimeout(renderFrame, 1000 / fps);
+        setTimeout(renderFrame, Math.max(0, 1000 / fps - (performance.now() - frameStart)));
       }
       renderFrame();
     }
