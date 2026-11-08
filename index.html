@@ -200,23 +200,82 @@
         請點擊「一鍵複製」，直接將下方內容貼給 Gemini 或 ChatGPT。第一列就是主題，直接修改括號中的【主題名稱】即可：
       </p>
       <div class="relative">
-        <textarea id="promptTemplateText" rows="11" readonly class="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-amber-300 leading-relaxed outline-none resize-none custom-scroll">
+        <textarea id="promptTemplateText" rows="16" readonly class="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-amber-300 leading-relaxed outline-none resize-none custom-scroll">
 【數學探究主題】：【三角形 SSA 為什麼不一定全等】（請修改此處主題）
 
-我想製作一支黑板火柴人數學短片。請直接輸出可在「黑板短片工作台」執行的 JavaScript 純代碼，不要寫任何企劃說明文字，不要宣告 const TL 陣列。
+我要製作一支 9:16 黑板火柴人數學短片（約 20～25 秒）。請「只輸出」可直接執行的 JavaScript 程式碼：不要任何說明文字、不要 ``` 程式碼框、不要 HTML。程式會在「黑板短片工作台」內執行，下列函式與常數都已內建，請直接使用，不要重新定義，也不要宣告同名變數（T、TL、ramp、win、lerp、header、drawFig…）。
 
-【執行環境白名單 API 規範】
-1. 時間軸物件：
-   - const tb = new TL(120, P, CAP); // 小宇 (who:'b', 天藍色)
-   - const tg = new TL(600, P, CAP); // 小晴 (who:'g', 橘色)
-   - 僅允許使用：.wait(秒), .at(時間), .say('台詞', 'b'或'g', 秒), .walk(x), .piece('id', 初始物件), .pc('id', t), .set('id', 目標物件, 耗時)
-   - 禁止使用未實現的外部偽函式（嚴禁呼叫 hi5()、grab()、carry() 等未定義 API）
-2. 渲染核心規範：
-   - 必須宣告 window.TEND = 總秒數;（建議 20~25 秒）
-   - 必須宣告 window.render = function(t){ ... finish(s); };
-   - 畫面尺寸：寬 720, 高 1280 (9:16 直式)，地板 FL = 950
-   - 繪圖輔助函式：header(), chalkLine(), floorLine(), T(), drawFig(), captions(), finish(s)
-3. 教學流程：小宇提出迷思 ➔ 小晴用幾何/代數動態演示關鍵破綻 ➔ 兩人觀察出反例 ➔ 結尾給出明確結論看板。</textarea>
+【一、輸出規則（必守）】
+1. 整段包在 (function(){ ... })(); 之中。
+2. 畫面用「SVG 字串」組成：let s = ...; s += ...; 最後呼叫 finish(s)。禁止使用 canvas、ctx、document、任何 DOM 操作。
+3. 必須設定 window.TEND = 總秒數; 與 window.render = function(t){ ... finish(s); };
+4. 畫布寬 720、高 1280（直式）；地板 const FL = 940；角色 x 範圍 60～660；圖形主要畫在 y = 330～900。
+5. 所有文字（台詞、標題、標籤）不可出現半形 < > &，請改用全形 ＜ ＞ ＆ 或 ≤ ≥。
+
+【二、時間軸（劇本）】
+const P = {}, CAP = [];            // 一定要先宣告這兩個
+const tb = new TL(170, P, CAP);    // 小宇 who:'b'（天藍），170 是初始 x
+const tg = new TL(560, P, CAP);    // 小晴 who:'g'（橘）
+可用方法（可串接；每條時間軸有自己的目前時間 .T）：
+  .wait(秒)                      推進時間
+  .at(絕對秒)                    跳到某時刻（只能往後）
+  .say('台詞','b'或'g',秒)       加字幕；「不會」推進時間，後面要接 .wait(同秒數)
+  .walk(目標x)                   走過去並推進時間
+  .piece('id',{v:0})             宣告會動的數值物件（屬性要是數字）
+  .set('id',{v:1},秒)            把數值補間到新值並推進時間
+  .pc('id',t)                    取得 t 時刻的物件屬性，例如 tb.pc('id',t).v
+  .fx(t) / .vx(t)                角色在 t 時刻的 x 與速度
+兩人輪流：tg.at(tb.T) 讓小晴從小宇講完的時刻接著演。記錄關鍵時刻：const t1 = tb.T;
+全片結論字幕：CAP.push([開始秒, 結束秒, '結論文字']);
+
+【三、繪圖函式（參數順序一定要照寫）】
+header(t, '左上小標', '大標題', [[起秒, 迄秒, '副標文字'], ...])
+floorLine(FL)
+chalkLine(x1, y1, x2, y2, 顏色, 粗細, 透明度, '8 8'虛線可省略)
+T(x, y, '文字', 字級, 顏色, 透明度, 'middle'|'start'|'end', 'zh'中文或'm'數學斜體)
+drawFig({ who:'b', t, x: tb.fx(t), floor: FL, vx: tb.vx(t), mood: 3, face: 0.5, q: 0, yay: 0, hL: [x,y], wL: 0, hR: [x,y], wR: 0 })
+   mood 嘴型 -4難過～4開心；face 看向 -1左～1右；q 頭上問號 0～1；yay 舉手歡呼 0～1；hL/hR 手伸向的點，wL/wR 伸手程度 0～1
+nameTag(x, FL, 'b'或'g', 透明度)
+captions(t, CAP)                 字幕，放在最後一個
+it('AB')                         斜體字母
+ramp(t,a,b) 由 0 漸變到 1；win(t,a,b) 在 a～b 之間淡入淡出；lerp(a,b,u)；clamp(v,0,1)
+顏色常數：CH 粉筆白、SKY 天藍、ORA 橘、YEL 黃、RED 紅、TEAL 青綠、DIM 灰
+其他圖形直接寫 SVG 標籤，例如：s += `<circle cx="${x}" cy="${y}" r="8" fill="${YEL}" opacity="${op}"/>`;
+
+【四、範本骨架（照這個結構擴寫成完整短片）】
+(function(){
+  const FL = 940;
+  const P = {}, CAP = [];
+  const tb = new TL(170, P, CAP), tg = new TL(560, P, CAP);
+  tb.piece('k', { v: 0 });
+
+  tb.wait(0.4).say('這樣一定對吧！', 'b', 2.4).wait(2.4);
+  tg.at(tb.T); const t1 = tg.T;
+  tg.say('我們動手驗證看看', 'g', 2.4);
+  tb.at(tg.T).set('k', { v: 1 }, 2.4);
+  tg.wait(2.4);
+  tb.at(tg.T); const t2 = tb.T;
+  tb.say('原來如此！', 'b', 2.2).wait(2.2);
+
+  const TEND = Math.max(tb.T, tg.T) + 3;
+  CAP.push([TEND - 3, TEND, '結論：……']);
+  window.TEND = TEND;
+
+  window.render = function(t){
+    let s = header(t, '八年級　單元名稱', '大標題？', [[0.3, t1, '副標一'], [t1, TEND + 1, '副標二']]);
+    s += floorLine(FL);
+    const k = tb.pc('k', t).v;
+    s += chalkLine(100, 600, lerp(100, 620, k), 600, YEL, 5, 1);
+    s += T(360, 1080, '結論文字', 40, YEL, ramp(t, TEND - 3, TEND - 2.4), 'middle', 'zh');
+    s += drawFig({ who: 'b', t, x: tb.fx(t), floor: FL, vx: tb.vx(t), mood: 3, face: 0.5, q: win(t, 0.4, t1) });
+    s += drawFig({ who: 'g', t, x: tg.fx(t), floor: FL, vx: tg.vx(t), mood: 3, face: -0.5, yay: ramp(t, TEND - 2, TEND - 1.6) });
+    s += nameTag(tb.fx(t), FL, 'b', win(t, 0, 3)) + nameTag(tg.fx(t), FL, 'g', win(t, 0, 3));
+    s += captions(t, CAP);
+    finish(s);
+  };
+})();
+
+【五、教學流程】小宇提出迷思 ➔ 小晴用幾何／代數動態演示關鍵破綻 ➔ 兩人觀察出反例 ➔ 結尾給出明確結論看板。</textarea>
         <button onclick="copyPromptTemplate()" class="absolute top-2.5 right-2.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-lg shadow transition-all">
           一鍵複製
         </button>
@@ -525,13 +584,13 @@
 
     function loadSSAExample() {
       document.getElementById('scriptInput').value = ssaScriptCode;
-      handleScriptInput();
+      loadScript();
     }
 
     // 清除腳本按鈕邏輯
     function clearScriptInput() {
       document.getElementById('scriptInput').value = '';
-      handleScriptInput();
+      loadScript();
       const ctx = document.getElementById('previewCanvas').getContext('2d');
       ctx.drawImage(bgCanvas, 0, 0);
       window.render = null;
@@ -541,12 +600,80 @@
       document.getElementById('scriptInput').focus();
     }
 
-    // 腳本即時解析與防呆檢查
+    // ==========================================
+    // 腳本前處理：剝除 AI 常附帶的程式碼框與說明文字
+    // ==========================================
+    function cleanPastedCode(raw) {
+      let code = raw.replace(/\r\n?/g, '\n').replace(/ /g, ' ');
+      const fences = [...code.matchAll(/```[^\n]*\n([\s\S]*?)(?:```|$)/g)];
+      if (fences.length) {
+        // 有程式碼框：只取框內程式碼（多個框就挑最長、含 render 的那段）
+        const blocks = fences.map(m => m[1]);
+        code = blocks.filter(b => /render/.test(b)).sort((a, b) => b.length - a.length)[0] || blocks.join('\n');
+      }
+      return code.replace(/^\s*```.*$/gm, '').trim();
+    }
+
+    // 檢查 SVG 字串能否被瀏覽器解析（文字含半形 < & 時會失敗）
+    function checkSvg(svgContent) {
+      const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${svgContent}</svg>`, 'image/svg+xml');
+      const err = doc.querySelector('parsererror');
+      if (!err) return '';
+      const m = (err.textContent || '').match(/error on line[^\n]*/);
+      return m ? m[0].replace(/Below is a rendering.*$/, '').trim() : 'SVG 格式錯誤';
+    }
+
+    // 把常見錯誤訊息翻成老師看得懂的提示
+    function explainError(msg) {
+      const tips = [
+        [/is not defined/, m => { const v = (m.match(/^(\S+) is not defined/) || [])[1];
+          if (v === 'P' || v === 'CAP') return '腳本沒有先宣告 const P = {}, CAP = [];';
+          if (v === 'ctx' || v === 'canvas' || v === 'document') return '腳本用 Canvas/DOM 繪圖，但本工作台需要組成 SVG 字串再呼叫 finish(s)';
+          return `使用了不存在的名稱「${v}」，可能是 AI 自創的函式或變數`; }],
+        [/subs is not iterable/, () => 'header() 參數格式錯：應為 header(t, 小標, 大標題, [[起秒, 迄秒, 副標], ...])'],
+        [/CAP is not iterable|Cannot read properties of undefined \(reading 'length'\)/, () => 'captions() 參數格式錯：應為 captions(t, CAP)'],
+        [/is not a function/, m => `呼叫了不存在的函式（${m}），可能是 AI 自創的 API`],
+        [/Unexpected token|Invalid or unexpected token|missing \) after|Unexpected end of input|Unexpected identifier/, () => '程式語法錯誤，可能沒有複製完整，或混入了說明文字'],
+        [/Identifier '(.+)' has already been declared/, m => `重複宣告了同名變數（${m.match(/'(.+)'/)[1]}）`],
+      ];
+      for (const [re, f] of tips) if (re.test(msg)) return f(msg);
+      return '';
+    }
+
+    function showScriptError(title, detail, tip) {
+      const badge = document.getElementById('scriptBadge');
+      badge.textContent = '⚠ ' + title;
+      badge.className = "text-xs text-red-400 bg-red-950/60 px-2.5 py-1 rounded-md border border-red-500/40";
+      document.getElementById('parsedCard').classList.remove('hidden');
+      document.getElementById('parsedMeta').textContent = '時長：-- 秒';
+      const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      document.getElementById('dialogueList').innerHTML =
+        (tip ? `<div class="text-amber-300 font-semibold leading-relaxed">${esc(tip)}</div>` : '') +
+        `<div class="text-red-400 font-mono text-[11px] leading-relaxed">錯誤訊息：${esc(detail)}</div>` +
+        `<div class="text-slate-400 leading-relaxed">建議：把上面的錯誤訊息連同程式碼貼回給 AI，請它依「第一步」提示詞的格式修正。</div>`;
+      window.render = null;
+      window.TEND = 0;
+      const ctx = document.getElementById('previewCanvas').getContext('2d');
+      ctx.drawImage(bgCanvas, 0, 0);
+    }
+
+    // 腳本即時解析與防呆檢查（輸入停頓 0.4 秒後才執行，避免打字途中反覆報錯）
+    let scriptTimer = null;
     function handleScriptInput() {
-      const code = document.getElementById('scriptInput').value.trim();
+      clearTimeout(scriptTimer);
+      scriptTimer = setTimeout(loadScript, 400);
+    }
+
+    function loadScript() {
+      const raw = document.getElementById('scriptInput').value;
+      const code = cleanPastedCode(raw);
       const badge = document.getElementById('scriptBadge');
       const parsedCard = document.getElementById('parsedCard');
       const dialogueList = document.getElementById('dialogueList');
+
+      // 清掉上一支腳本留下的 render / TEND，避免畫面殘留舊影片
+      window.render = null;
+      window.TEND = 0;
 
       if (!code) {
         badge.textContent = "尚未載入腳本";
@@ -555,8 +682,8 @@
         return;
       }
 
-      // 防呆檢查：檢查是否為企劃案而非可執行代碼
-      if (!code.includes('window.render') && !code.includes('render = function') && !code.includes('function render')) {
+      // 防呆檢查：是否為企劃案文字而非可執行代碼
+      if (!/render/.test(code)) {
         badge.textContent = "⚠ 代碼缺少 render 函數 (無法生成畫面)";
         badge.className = "text-xs text-amber-400 bg-amber-950/60 px-2.5 py-1 rounded-md border border-amber-500/40";
         parsedCard.classList.remove('hidden');
@@ -564,43 +691,70 @@
         return;
       }
 
+      // 1) 執行腳本；同時接住頂層的 function render / const TEND 寫法
       try {
-        new Function(code)();
-        const dur = window.TEND || 20;
-        badge.textContent = `✓ 已載入 (時長: ${dur.toFixed(1)}s)`;
-        badge.className = "text-xs text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-md border border-emerald-500/40";
-        parsedCard.classList.remove('hidden');
-        document.getElementById('parsedMeta').textContent = `時長：${dur.toFixed(1)} 秒`;
-
-        const slider = document.getElementById('timeSlider');
-        slider.max = dur.toFixed(1);
-        slider.value = 0;
-        handleSliderChange(0);
-
-        const sayMatches = [...code.matchAll(/\.say\s*\(\s*['"`](.*?)['"`]\s*,\s*['"`](b|g)['"`]/g)];
-        let html = '';
-        if (sayMatches.length > 0) {
-          sayMatches.forEach((m) => {
-            const role = m[2] === 'b' ? '小宇 (男)' : '小晴 (女)';
-            const color = m[2] === 'b' ? 'text-sky-400' : 'text-orange-400';
-            html += `
-              <div class="flex items-center gap-2 bg-slate-900/60 p-2 rounded-lg border border-slate-800/80">
-                <span class="${color} font-bold shrink-0">[${role}]</span>
-                <span class="text-slate-300 truncate">${m[1]}</span>
-              </div>
-            `;
-          });
-        } else {
-          html = '<div class="text-slate-500">此腳本為純自訂動畫演示。</div>';
-        }
-        dialogueList.innerHTML = html;
-
+        new Function(code +
+          '\n;try{if(typeof window.render!=="function"&&typeof render==="function")window.render=render;}catch(e){}' +
+          '\n;try{if(!(window.TEND>0)&&typeof TEND==="number")window.TEND=TEND;}catch(e){}')();
       } catch (err) {
-        badge.textContent = "⚠ 代碼語法錯誤";
-        badge.className = "text-xs text-red-400 bg-red-950/60 px-2.5 py-1 rounded-md border border-red-500/40";
-        parsedCard.classList.remove('hidden');
-        dialogueList.innerHTML = `<div class="text-red-400 font-mono text-[11px] leading-relaxed">執行出錯：${err.message}</div>`;
+        return showScriptError('腳本無法執行', err.message, explainError(err.message));
       }
+      if (typeof window.render !== 'function') {
+        return showScriptError('找不到 render 函數', 'window.render 未定義', '腳本需要寫成 window.render = function(t){ ... finish(s); };');
+      }
+      const dur = window.TEND > 0 ? window.TEND : 20;
+      if (!(window.TEND > 0)) window.TEND = dur;
+
+      // 2) 試跑開頭、中段、結尾三個時間點，提早抓出畫面錯誤
+      for (const tt of [0, dur / 2, Math.max(0, dur - 0.5)]) {
+        currentSvgString = '';
+        try {
+          window.render(tt);
+        } catch (err) {
+          return showScriptError(`畫面在 t=${tt.toFixed(1)}s 出錯`, err.message, explainError(err.message));
+        }
+        if (!currentSvgString) {
+          return showScriptError('畫面是空的', 'render 沒有呼叫 finish(s)', 'render 函數最後要呼叫 finish(s)，把組好的 SVG 字串交給工作台');
+        }
+        if (/NaN|undefined/.test(currentSvgString)) {
+          return showScriptError(`畫面在 t=${tt.toFixed(1)}s 有無效座標`, '圖形座標出現 NaN 或 undefined',
+            'drawFig 要用物件格式 drawFig({ who:"b", t, x: tb.fx(t), floor: FL, vx: tb.vx(t) })，其他座標也請確認都是數字');
+        }
+        const svgErr = checkSvg(currentSvgString);
+        if (svgErr) {
+          return showScriptError(`畫面在 t=${tt.toFixed(1)}s 的 SVG 格式錯誤`, svgErr,
+            '文字中可能含有半形 < 或 & 符號，請改成全形 ＜ ＆ 或 ≤ ≥，或檢查 SVG 標籤是否寫完整');
+        }
+      }
+
+      badge.textContent = `✓ 已載入 (時長: ${dur.toFixed(1)}s)`;
+      badge.className = "text-xs text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-md border border-emerald-500/40";
+      parsedCard.classList.remove('hidden');
+      document.getElementById('parsedMeta').textContent = `時長：${dur.toFixed(1)} 秒`;
+
+      const slider = document.getElementById('timeSlider');
+      slider.max = dur.toFixed(1);
+      slider.value = 0;
+      handleSliderChange(0);
+
+      const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      const sayMatches = [...code.matchAll(/\.say\s*\(\s*(['"`])(.*?)\1\s*,\s*['"`](b|g)['"`]/g)];
+      let html = '';
+      if (sayMatches.length > 0) {
+        sayMatches.forEach((m) => {
+          const role = m[3] === 'b' ? '小宇 (男)' : '小晴 (女)';
+          const color = m[3] === 'b' ? 'text-sky-400' : 'text-orange-400';
+          html += `
+            <div class="flex items-center gap-2 bg-slate-900/60 p-2 rounded-lg border border-slate-800/80">
+              <span class="${color} font-bold shrink-0">[${role}]</span>
+              <span class="text-slate-300 truncate">${esc(m[2])}</span>
+            </div>
+          `;
+        });
+      } else {
+        html = '<div class="text-slate-500">此腳本為純自訂動畫演示。</div>';
+      }
+      dialogueList.innerHTML = html;
     }
 
     async function handleSliderChange(val) {
@@ -608,7 +762,11 @@
       document.getElementById('liveTimestamp').textContent = `${formatTime(val)} / ${formatTime(window.TEND || 0)}`;
       if (typeof window.render === 'function') {
         const ctx = document.getElementById('previewCanvas').getContext('2d');
-        window.render(parseFloat(val));
+        try {
+          window.render(parseFloat(val));
+        } catch (err) {
+          return showScriptError(`畫面在 t=${parseFloat(val).toFixed(1)}s 出錯`, err.message, explainError(err.message));
+        }
         await drawSvgToCanvas(currentSvgString, ctx);
       }
     }
@@ -660,7 +818,7 @@
           </style>${svgContent}</svg>`;
         const img = new Image();
         img.onload = () => { ctx.drawImage(bgCanvas, 0, 0); ctx.drawImage(img, 0, 0); resolve(); };
-        img.onerror = resolve;
+        img.onerror = () => { ctx.drawImage(bgCanvas, 0, 0); resolve(); };
         img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
       });
     }
@@ -745,7 +903,7 @@
           return;
         }
 
-        window.render(t);
+        try { window.render(t); } catch (err) { console.error(err); }
         await drawSvgToCanvas(currentSvgString, ctx);
 
         const pct = Math.round((t / totalDur) * 100);
