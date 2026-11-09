@@ -210,8 +210,12 @@
 1. 整段包在 (function(){ ... })(); 之中。
 2. 畫面用「SVG 字串」組成：let s = ...; s += ...; 最後呼叫 finish(s)。禁止使用 canvas、ctx、document、任何 DOM 操作。
 3. 必須設定 window.TEND = 總秒數; 與 window.render = function(t){ ... finish(s); };
-4. 畫布寬 720、高 1280（直式）；地板 const FL = 940；角色 x 範圍 60～660；圖形主要畫在 y = 330～900。
+4. 畫布寬 720、高 1280（直式）；地板 const FL = 940。版面分區不可重疊：
+   y = 80～300 標題區（header 自動畫）；y = 320～680 黑板圖形／算式區（所有圖形、算式、框都只能畫在這裡）；
+   y = 700～960 火柴人站立區（不要在這區畫任何圖形）；y = 980～1120 結論看板區；y ≈ 1178 字幕列（captions 自動畫）。
+   兩個角色的 x 請保持在 100～620，彼此相距至少 200。
 5. 所有文字（台詞、標題、標籤）不可出現半形 < > &，請改用全形 ＜ ＞ ＆ 或 ≤ ≥。
+6. 每句台詞（.say 與 CAP.push）最多 16 個中文字，講不完就拆成兩句；副標題最多 18 字；圖形內單行文字最多 14 字。
 
 【二、時間軸（劇本）】
 const P = {}, CAP = [];            // 一定要先宣告這兩個
@@ -399,9 +403,12 @@ ramp(t,a,b) 由 0 漸變到 1；win(t,a,b) 在 a～b 之間淡入淡出；lerp(a
     function captions(t,CAP){let s='';
       for(let [t0,t1,txt,who] of CAP){ txt=txt.split(/(<[^>]+>)/).map(seg=>seg.startsWith('<')?seg:seg.replace(/(^|[^a-z])(ab|[xyabchknmd])(?![a-z])/g,(m,a,v)=>a+zi(v))).join('');const op=win(t,t0,t1,.18); if(op<=.01) continue;
         if(who&&WHO[who]) txt=`<tspan fill="${WHO[who][1]}">${WHO[who][0]}</tspan>：`+txt;
-        const plain=txt.replace(/<[^>]+>/g,''); const w=[...plain].reduce((a,ch)=>a+(/[ -~]/.test(ch)?17:32),0)+60;
+        const plain=txt.replace(/<[^>]+>/g,''); const tw=[...plain].reduce((a,ch)=>a+(/[ -~]/.test(ch)?17:32),0);
+        // 字幕太長時自動縮小字級；縮到 22 仍放不下就壓縮字距，保證不超出 680 寬
+        const k=Math.min(1,Math.max(22/32,640/tw)), fs=32*k, inner=tw*k, fit=inner>640?` textLength="640" lengthAdjust="spacingAndGlyphs"`:'';
+        const w=Math.min(inner,640)+60;
         s+=`<g opacity="${op}"><rect x="${360-w/2}" y="${CAPY-31}" width="${w}" height="62" rx="31" fill="#0c1410" fill-opacity=".62"/>`+
-           `<text x="360" y="${CAPY}" class="zh" font-size="32" fill="#f8f2e4" text-anchor="middle" dominant-baseline="central">${txt}</text></g>`;}
+           `<text x="360" y="${CAPY}" class="zh" font-size="${fs.toFixed(1)}" fill="#f8f2e4" text-anchor="middle" dominant-baseline="central"${fit}>${txt}</text></g>`;}
       return s;}
     function floorLine(F,op=.28){return `<line x1="20" y1="${F+3}" x2="700" y2="${F+3}" stroke="${CH}" stroke-width="2.4" opacity="${op}"/>`;}
     function chalkLine(x1,y1,x2,y2,col=CH,w=3,op=1,dash=''){return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="${w}" stroke-linecap="round" opacity="${op}" ${dash?`stroke-dasharray="${dash}"`:''}/>`;}
