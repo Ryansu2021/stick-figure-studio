@@ -30,7 +30,7 @@
       <div class="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-xl shadow-lg shadow-emerald-900/40">🎬</div>
       <div>
         <h1 class="text-xl md:text-2xl font-black tracking-tight text-white flex items-center gap-2">
-          黑板火柴人短片工作台 <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/30">Studio v2.6</span>
+          黑板火柴人短片工作台 <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/30">Studio v2.7</span>
         </h1>
         <p class="text-xs text-slate-400 mt-0.5">兩段式研習工作流：第一步向 AI 索取程式碼 ➔ 第二步網頁離線一鍵渲染出片</p>
       </div>
@@ -216,6 +216,7 @@
    兩個角色的 x 請保持在 100～620，彼此相距至少 200。
 5. 所有文字（台詞、標題、標籤）不可出現半形 < > &，請改用全形 ＜ ＞ ＆ 或 ≤ ≥。
 6. 每句台詞（.say 與 CAP.push）最多 16 個中文字，講不完就拆成兩句；副標題最多 18 字；圖形內單行文字最多 14 字。
+7. 大標題最多 9 個字（一行放得下），只寫單元重點的名詞或短句，例如「異分母要先通分」「SSA 不一定全等」；不要把整個問題寫進大標題，問句請放在副標題。左上小標最多 14 字，例如「七年級　數與數線」。
 
 【二、時間軸（劇本）】
 const P = {}, CAP = [];            // 一定要先宣告這兩個
@@ -234,7 +235,7 @@ const tg = new TL(560, P, CAP);    // 小晴 who:'g'（橘）
 全片結論字幕：CAP.push([開始秒, 結束秒, '結論文字']);
 
 【三、繪圖函式（參數順序一定要照寫）】
-header(t, '左上小標', '大標題', [[起秒, 迄秒, '副標文字'], ...])
+header(t, '左上小標≤14字', '大標題≤9字', [[起秒, 迄秒, '副標文字≤18字'], ...])
 floorLine(FL)
 chalkLine(x1, y1, x2, y2, 顏色, 粗細, 透明度, '8 8'虛線可省略)
 T(x, y, '文字', 字級, 顏色, 透明度, 'middle'|'start'|'end', 'zh'中文或'm'數學斜體)
@@ -394,10 +395,19 @@ ramp(t,a,b) 由 0 漸變到 1；win(t,a,b) 在 a～b 之間淡入淡出；lerp(a
     }
 
     const CAPY=1178; const WHO={b:['小宇',SKY],g:['小晴',ORA]};
+    // 依字數估計寬度，自動縮小字級；縮到下限仍放不下就壓縮字距，保證不超出畫面（v2.7）
+    function fitText(x,y,html,fs,minFs,maxW,col,op,anchor){
+      if(op<=0.005) return '';
+      const plain=String(html).replace(/<[^>]+>/g,''), cjk=/[\u2e80-\u9fff\uff00-\uffef]/.test(plain);
+      const tw=[...plain].reduce((a,ch)=>a+(/[ -~]/.test(ch)?0.55:1),0)*fs;
+      const f=Math.max(minFs,Math.min(fs,fs*maxW/tw)), w=tw*f/fs;
+      const fit=w>maxW?` textLength="${maxW}" lengthAdjust="spacingAndGlyphs"`:'';
+      return `<text x="${x}" y="${y}" class="${cjk?'zh':'m'}" font-size="${f.toFixed(1)}" fill="${col}" text-anchor="${anchor}" opacity="${op}" dominant-baseline="central"${fit}>${html}</text>`;
+    }
     function header(t,label,titleHtml,subs){
-      let s=`<line x1="40" y1="118" x2="72" y2="118" stroke="${YEL}" stroke-width="3" opacity=".8"/>`+T(84,118,label,22,DIM,.9,'start','zh');
-      s+=T(360,196,titleHtml,62,CH,ramp(t,0,.6));
-      for(const [a,b,h] of subs) s+=T(360,268,h,32,CH,win(t,a,b,.3),'middle','zh');
+      let s=`<line x1="40" y1="118" x2="72" y2="118" stroke="${YEL}" stroke-width="3" opacity=".8"/>`+fitText(84,118,label,22,16,596,DIM,.9,'start');
+      s+=fitText(360,196,titleHtml,62,40,660,CH,ramp(t,0,.6),'middle');
+      for(const [a,b,h] of subs) s+=fitText(360,268,h,32,24,660,CH,win(t,a,b,.3),'middle');
       return s;
     }
     function captions(t,CAP){let s='';
