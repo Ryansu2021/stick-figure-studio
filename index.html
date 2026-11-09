@@ -204,7 +204,7 @@
         <textarea id="promptTemplateText" rows="16" readonly class="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-amber-300 leading-relaxed outline-none resize-none custom-scroll">
 【數學探究主題】：【三角形 SSA 為什麼不一定全等】（請修改此處主題）
 
-我要製作一支 9:16 黑板火柴人數學短片（約 20～25 秒）。請「只輸出」可直接執行的 JavaScript 程式碼：不要任何說明文字、不要 ``` 程式碼框、不要 HTML。程式會在「黑板短片工作台」內執行，下列函式與常數都已內建，請直接使用，不要重新定義，也不要宣告同名變數（T、TL、ramp、win、lerp、header、drawFig…）。
+我要製作一支 9:16 黑板火柴人數學短片（約 20～25 秒）。請把「全部」JavaScript 程式碼放在「同一個」```javascript 程式碼框裡（從第一行到最後的 })(); 都在框內，不要拆成多段），框外不要任何說明文字，也不要 HTML。程式會在「黑板短片工作台」內執行，下列函式與常數都已內建，請直接使用，不要重新定義，也不要宣告同名變數（T、TL、ramp、win、lerp、header、drawFig…）。
 
 【一、輸出規則（必守）】
 1. 整段包在 (function(){ ... })(); 之中。
@@ -612,14 +612,24 @@ ramp(t,a,b) 由 0 漸變到 1；win(t,a,b) 在 a～b 之間淡入淡出；lerp(a
     // 腳本前處理：剝除 AI 常附帶的程式碼框與說明文字
     // ==========================================
     function cleanPastedCode(raw) {
-      let code = raw.replace(/\r\n?/g, '\n').replace(/ /g, ' ');
-      const fences = [...code.matchAll(/```[^\n]*\n([\s\S]*?)(?:```|$)/g)];
-      if (fences.length) {
-        // 有程式碼框：只取框內程式碼（多個框就挑最長、含 render 的那段）
-        const blocks = fences.map(m => m[1]);
-        code = blocks.filter(b => /render/.test(b)).sort((a, b) => b.length - a.length)[0] || blocks.join('\n');
+      let code = raw.replace(/\r\n?/g, '\n').replace(/[\u00a0\u200b\ufeff]/g, ' ');
+      if (/^\s*```/m.test(code)) {
+        // 框外文字若也是程式碼（Gemini 常把一段程式拆成「文字＋程式框＋文字」），只刪掉 ``` 那幾行、保留全部內容
+        const outside = code.replace(/```[^\n]*\n[\s\S]*?(?:```|$)/g, '');
+        const codeLike = /[;{}]|=>|\bconst\b|\blet\b|window\./.test(outside);
+        if (!codeLike) {
+          // 框外只是說明文字：只取框內程式碼（多個框就挑最長、含 render 的那段）
+          const blocks = [...code.matchAll(/```[^\n]*\n([\s\S]*?)(?:```|$)/g)].map(m => m[1]);
+          code = blocks.filter(b => /render/.test(b)).sort((x, y) => y.length - x.length)[0] || blocks.join('\n');
+        }
+        code = code.replace(/^\s*```.*$/gm, '');
       }
-      return code.replace(/^\s*```.*$/gm, '').trim();
+      // 去掉開頭與結尾的說明文字（不含任何程式符號的行）
+      const lines = code.split('\n');
+      const isProse = l => l.trim() !== '' && !/[;{}()=\[\]`]|^\s*\/\//.test(l);
+      while (lines.length && (lines[0].trim() === '' || isProse(lines[0]))) lines.shift();
+      while (lines.length && (lines[lines.length - 1].trim() === '' || isProse(lines[lines.length - 1]))) lines.pop();
+      return lines.join('\n').trim();
     }
 
     // 檢查 SVG 字串能否被瀏覽器解析（文字含半形 < & 時會失敗）
@@ -674,7 +684,7 @@ ramp(t,a,b) 由 0 漸變到 1；win(t,a,b) 在 a～b 之間淡入淡出；lerp(a
 
     function loadScript() {
       const raw = document.getElementById('scriptInput').value;
-      const code = cleanPastedCode(raw);
+      const code = cleanPastedCode(raw) || raw.trim();
       const badge = document.getElementById('scriptBadge');
       const parsedCard = document.getElementById('parsedCard');
       const dialogueList = document.getElementById('dialogueList');
